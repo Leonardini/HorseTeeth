@@ -1,6 +1,11 @@
-setwd("HorseTeeth/")
+curDir = getwd()
+if (!(substr(curDir, nchar(curDir) - nchar("HorseTeeth") + 1, nchar(curDir)) == "HorseTeeth")) {
+  setwd("HorseTeeth/")
+}
+source("http://www.phaget4.org/R/myImagePlot.R")
 source("AlternativeDataPrep.R")
 
+### Useful packages
 listOfPackages = c("pls", "c060", "pamr", "dplyr", "kernlab", "ROCR", "pROC", "car", "MASS", "e1071", "klaR")
 listOfPackages = c(listOfPackages, c("glmnet", "plsgenomics", "FactoMineR", "Morpho", "fossil", "geomorph", "caret"))
 requirePackages(listOfPackages)
@@ -66,10 +71,10 @@ filterData = function(inputList) {
   originalP2s = P2s[labelsP2, , drop = FALSE]
   extraP2s = P2s[c(grep("LP", rownames(P2s)), grep("RP", rownames(P2s))), , drop = FALSE]
   P2s = rbind(originalP2s, extraP2s)
-  PRZMatrix = matrix(c("Mixed", "PRZ", "Eneolithic"), nrow = nrow(extraP2s), ncol = 3, byrow = TRUE)
+  PRZMatrix = matrix(c("Mixed", "PRZ", "PRZ"), nrow = nrow(extraP2s), ncol = 3, byrow = TRUE)
   colnames(PRZMatrix) = colnames(metadataP2$Data)
   metadataP2 = rbind(metadataP2$Data, PRZMatrix)
-  ### Changed according to Alan's request; remove if the original classification: Eneolithic, i.e. unknown, is desired
+  ### Changed according to Alan's request; remove if the original classification, Eneolithic (ie unknown), is desired
   metadataP2[metadataP2[,"Site"] == "Shiderty", "Time.Period"] = "Paleolithic"
   P2FullDataset = list(Data = P2s, Labels = metadataP2)
   P2RedDataset = list(Data = P2s, Labels = metadataP2[,"Time.Period"])
@@ -80,8 +85,8 @@ filterData = function(inputList) {
   originalM3s = M3s[labelsM3, , drop = FALSE]
   extraM3s = M3s[c(grep("LM", rownames(M3s)), grep("RM", rownames(M3s))), , drop = FALSE]
   M3s = rbind(originalM3s, extraM3s)
-  TimeMap = c("Eneolithic","LBA","LBA","Paleolithic","Paleolithic","Iron Age","Modern","Eneolithic")
-  names(TimeMap) = c("Botai","Rogolik","Kent","31607","33128","Arzhan","Modern","Pavlodar")
+  TimeMap = c("Eneolithic", "LBA", "LBA", "Paleolithic", "Paleolithic", "Iron Age", "Modern", "Eneolithic")
+  names(TimeMap) = c("Botai", "Rogolik", "Kent", "31607", "33128", "Arzhan", "Modern", "Pavlodar")
   metadataM3$Data = cbind(metadataM3$Data[,c(3,2)], Time.Period = TimeMap[metadataM3$Data$Site])
   metadataM3 = rbind(metadataM3$Data, PRZMatrix)
   M3FullDataset = list(Data = M3s, Labels = metadataM3)
@@ -140,7 +145,34 @@ updatedProcess = function() {
   output1 = prepareRawData()
   output2 = filterData(output1)
   output3 = procrustesAnalysis(output2)
-  output3
+  P2s = output3[[1]]
+  M3s = output3[[2]]
+  ### optional step: compute pairwise RV coefficients
+  pairsRV1M = allPairsRV(P2s, diagVsAll = FALSE)
+  pairsRV2M = allPairsRV(M3s, diagVsAll = FALSE)
+  pdf("RVforP2Merged.pdf"); myImagePlot(pairsRV1M); dev.off()
+  pdf("RVforM3Merged.pdf"); myImagePlot(pairsRV2M); dev.off()
+  ### optional step: produce a 3-D PCA for both sets of teeth
+  make3DPCA(P2s)
+}
+
+make3DPCA = function(Dataset, labelName = "time period", tooth = "P2s") {
+  Labels = Dataset$Labels
+  Data = Dataset$Data
+  PCA = princomp(Data, scores = TRUE)
+  Labels = as.factor(Labels)
+  cols = rainbow(length(levels(Labels)))
+  open3d()
+  par3d(windowRect = c(100, 100, 900, 900))
+  plot3d(PCA$scores[,1:3], xlab = "PC1", ylab = "PC2", zlab = "PC3", col = cols[as.integer(Labels)], size = 1.5, type='s')
+  ### the user may want to perform some manual rotation here!
+  bgplot3d({
+    plot.new()
+    title(main = paste("Principal components by", labelName, "for", tooth), line = 1, cex.main = 2)
+    legend("topright", legend = levels(Labels), col = cols, pch = 16, cex = 2, lwd = 0, lty = "solid", inset = 0.02, bty = "n")
+  })
+  snapshot3d(filename = paste0("PCA3DFor", tooth, ".png"), fmt = 'png')
+  rgl.close()
 }
 
 ### This function computes the angles between each triplet of consecutive points in 2-D, by using inverse cosines
@@ -318,6 +350,7 @@ allLandmarksRV = function(Dataset) {
   allRVs
 }
 
+### Obsolete function
 prepareDatasetsHT = function() {
   Dataset1 = readDataset("P2-Clean.txt", labelCol = 1, dataCols = 2:19, sep = "\t")
   Dataset1 = removeDuplicates(Dataset1)
@@ -336,7 +369,6 @@ prepareDatasetsHT = function() {
   labels2 = sort(unique(Dataset2$Labels))
   pairsRV1 = allPairsRV(Dataset1, diagVsAll = TRUE)
   pairsRV2 = allPairsRV(Dataset2, diagVsAll = TRUE)
-  source("http://www.phaget4.org/R/myImagePlot.R")
   pdf("RVforP2.pdf"); myImagePlot(pairsRV1); dev.off()
   pdf("RVforM3.pdf"); myImagePlot(pairsRV2); dev.off()
   Dataset1M = mergeLabels(Dataset1, c("LBA", "Modern"))

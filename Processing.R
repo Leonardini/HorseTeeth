@@ -1,4 +1,7 @@
-setwd("HorseTeeth/")
+curDir = getwd()
+if (!(substr(curDir, nchar(curDir) - nchar("HorseTeeth") + 1, nchar(curDir)) == "HorseTeeth")) {
+  setwd("HorseTeeth/")
+}
 source("AlternativeDataPrep.R")
 
 ### Useful packages
