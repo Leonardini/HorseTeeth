@@ -6,8 +6,9 @@ source("http://www.phaget4.org/R/myImagePlot.R")
 source("AlternativeDataPrep.R")
 
 ### Useful packages
-listOfPackages = c("pls", "c060", "pamr", "dplyr", "kernlab", "ROCR", "pROC", "car", "MASS", "e1071", "klaR")
+listOfPackages = c("pls", "c060", "pamr", "dplyr", "kernlab", "ROCR", "pROC", "car", "MASS", "e1071", "klaR", "useful")
 listOfPackages = c(listOfPackages, c("glmnet", "plsgenomics", "FactoMineR", "Morpho", "fossil", "geomorph", "caret"))
+listOfPackages = c(listOfPackages, "dendextend")
 requirePackages(listOfPackages)
 
 ### Prepares raw data based on a directory
@@ -147,14 +148,27 @@ updatedProcess = function() {
   output3 = procrustesAnalysis(output2)
   P2s = output3[[1]]
   M3s = output3[[2]]
+  ### unsupervised methods: exploring the data
   ### optional step: compute pairwise RV coefficients
   pairsRV1M = allPairsRV(P2s, diagVsAll = FALSE)
   pairsRV2M = allPairsRV(M3s, diagVsAll = FALSE)
+  ### optional step: plot the pairwise RV coefficients
   pdf("RVforP2Merged.pdf"); myImagePlot(pairsRV1M); dev.off()
   pdf("RVforM3Merged.pdf"); myImagePlot(pairsRV2M); dev.off()
   ### optional step: produce a 3-D PCA for both sets of teeth
   make3DPCA(P2s)
-}
+  make3DPCA(M3s)
+  ### optional step: compute K-means clustering for both
+  P2Kmeans = performKMeans(P2s)
+  M3KMeans = performKMeans(M3s)
+  ### optional step: produce a hierarchical clustering for both
+  performHClust(P2s, filename = "P2HierarchicalClustering.pdf")
+  performHClust(M3s, filename = "M3HierarchicalClustering.pdf")
+  ### supervised methods: classification with statistical methods
+  
+  ### supervised methods: classification with machine learning methods
+
+  }
 
 make3DPCA = function(Dataset, labelName = "time period", tooth = "P2s") {
   Labels = Dataset$Labels
@@ -504,9 +518,17 @@ computeLDA = function(Dataset, skipColumns = 4, fromEnd = TRUE) {
   output
 }
 
-performKMeans = function(Dataset) {
+performKMeans = function(Dataset, PCAfirst = FALSE, plot = FALSE, filename = NULL) {
   numLabels = length(unique(Dataset$Labels))
+  if (PCAfirst) {
+    Dataset$Data = princomp(Dataset$Data, scores = TRUE)$scores[,1:2]
+  }
   Cluster = kmeans(Dataset$Data, centers = numLabels, nstart = 10)
+  if (plot) {
+    pdf(filename)
+    plot(Cluster, data = Dataset$Data, class = Dataset$Labels)
+    dev.off()
+  }
   Tab = table(Cluster$cluster, Dataset$Labels)
   Ind = adj.rand.index(Cluster$cluster, as.numeric(as.factor(Dataset$Labels)))
   output = list(Tab, Ind)
@@ -520,9 +542,12 @@ performHClust = function(Dataset, filename = "Plot.pdf") {
   L = length(uLabels)
   coloursToUse = as.numeric(as.factor(Dataset$Labels))
   coloursToUse = coloursToUse[order.dendrogram(Dendro)]
-  labels_colors(Dendro) = coloursToUse
   pdf(filename)
-  plot(Dendro)
+  Dendro %>% set("labels", rep("", length(Dataset$Labels))) %>%
+    set("leaves_pch", 19) %>%
+    set("leaves_cex", 0.6) %>% 
+    set("leaves_col", coloursToUse) %>% 
+    plot
   legend("topright", legend = uLabels, col = rainbow(L), lty = rep(1,L), xjust = 1, yjust = 1)
   dev.off()
 }

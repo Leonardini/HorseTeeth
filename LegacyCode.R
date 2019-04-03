@@ -145,88 +145,150 @@ if (first) {
 }
 
 ### Coordinate-based t-test and pairwise correlations
-computeCoordinateCorrelations = function(trainData) {
-  allRes = vector("list", numCol - 1)
-  for (ind in 1:(numCol - 1)) {
-    curCol = trainData[,ind]
-    cur0 = curCol[trainData[, numCol] == 0]
-    cur1 = curCol[trainData[, numCol] == 1] 
-    allRes[[ind]] = t.test(cur0, cur1)
-    if (min(cur0) >= max(cur1) || min(cur1) >= max(cur0)) {
-      print(paste("Detected perfect separation by", ind))
-    }
+computeCoordinateCorrelations = function(Dataset, oneVsAll = FALSE) {
+  allLabels = unique(Dataset$Labels)
+  numLabels = length(allLabels)
+  output = vector("list", ifelse(oneVsAll, numLabels, choose(numLabels, 2)))
+  index = 1
+  if (!oneVsAll) {
+    allPairs = t(combn(1:numLabels, 2))
   }
-  pVals = sapply(allRes, function(x) {x$p.value})
-  bestCoord = which.min(pVals)
-  Cors = cor(trainData[,-numCol])
-  diag(Cors) = 0
-  range(Cors)
+  else {
+    allPairs = cbind(1:numLabels, NULL)
+  }
+  for (ind1 in 1:nrow(allPairs)) {
+    print(index)
+    curInds = allPairs[ind1,]
+    curLow = curInds[1]
+    if (!oneVsAll) {
+      curHigh = curInds[2]
+      tempDataset = dichtomizeLabels(Dataset, lowLabel = allLabels[curLow], highLabel = allLabels[curHigh])
+    }
+    else {
+      tempDataset = dichtomizeLabels(Dataset, lowLabel = allLabels[curLow])
+    }
+    trainData = tempDataset$Data
+    Labels = tempDataset$Labels
+    allRes = vector("list", ncol(trainData))
+    for (ind in 1:ncol(trainData)) {
+      curCol = trainData[,ind]
+      cur0 = curCol[Labels == 0]
+      cur1 = curCol[Labels == 1] 
+      allRes[[ind]] = t.test(cur0, cur1)
+      if (min(cur0) >= max(cur1) || min(cur1) >= max(cur0)) {
+        print(paste("Detected perfect separation by", ind))
+      }
+    }
+    pVals = sapply(allRes, function(x) {x$p.value})
+    bestCoord = which.min(pVals)
+    Cors = cor(trainData)
+    diag(Cors) = 0
+    print(paste("The range of the correlations is", range(Cors)))
+    output[[index]] = list(Cors = Cors, pVals = pVals, bestCoord = bestCoord)
+    index = index + 1
+  }
+  output
+}
+
+transformDatasetToDataFrame = function(Dataset, labelName = "status") {
+  DF = cbind(Dataset$Data, Dataset$Labels)
+  colnames(DF)[ncol(DF)] = labelName
+  DF
+}
+
+### Penalized logistic regression
+penalizedLR = function(trainData, testData, Predictions = list(), dichotomize = FALSE) {
+  modelLRF = logistf(status ~., data = as.data.frame(trainData))
+  catPreds = modelLRF$predict
+  if (dichotomize) {
+    catPreds = dichotomize(catPreds)
+    trainAcc = getAccuracy(catPreds, trainData[,"status"])
+  }
+  else {
+    trainAcc = getAUC(catPreds, trainData[,"status"], TRUE, filename = "TrainAUCLRFirth.pdf")
+  }
+  betas = coef(modelLRF)
+  catPredsNew = 1 / (1 + exp(-cbind(1, testData) %*% betas))
+  if (dichotomize) {
+    catPredsNewBin = dichotomize(catPredsNew)
+    testAcc = getAccuracy(catPredsNewBin, testData[,"status"])
+  }
+  else {
+    testAcc = getAUC(catPredsNewBin, testData[,"status"], TRUE, filename = "TestAUCLRFirth.pdf")
+  }
+  Predictions[["LRFirth"]] = list(predictions = catPredsNew, model = modelLRF, trainAcc = trainAcc, testAcc = testAcc)
+  Predictions
+}
+ 
+### Alternative with the brglm package (bias reduction)
+penalizedLRAlternative = function(trainData, Predictions = list()) {
+  modelLRB = brglm(status ~., family = binomial(link = 'logit'), data = as.data.frame(trainData))
+  PredsBR = predict(modelLRB, newdata = as.data.frame(trainData), type = "response")
+  getAccuracy(dichotomize(PredsBR), trainData[,"status"])
+  PredsBRNew = predict(modelLRB, newdata = as.data.frame(testData), type = "response")
+  table(dichotomize(PredsBRNew))
+  getAccuracy(dichotomize(PredsBRNew), dichotomize(catPredsNew))
+  Predictions[["LRRedBias"]] = list(PredsBRNew, modelLRB)
+  Predictions
 }
 
 ### From here on, only those functions that are exploratory are listed. TODO: these need to be refactored eventually.
 if (exploratory) {
-### Penalized logistic regression
-modelLRF = logistf(status ~., data = as.data.frame(trainData))
-catPreds = modelLRF$predict
-catPreds = dichotomize(catPreds)
-getAccuracy(catPreds, trainData[,"status"])
-betas = coef(modelLRF)
-catPredsNew = 1 / (1 + exp(-cbind(1, testData) %*% betas))
-catPredsNewBin = dichotomize(catPredsNew)
-Predictions[["LRFirth"]] = list(catPredsNew, modelLRF)
-
-### Alternative with the brglm package (bias reduction)
-modelLRB = brglm(status ~., family = binomial(link = 'logit'), data = as.data.frame(trainData))
-PredsBR = predict(modelLRB, newdata = as.data.frame(trainData), type = "response")
-getAccuracy(dichotomize(PredsBR), trainData[,"status"])
-PredsBRNew = predict(modelLRB, newdata = as.data.frame(testData), type = "response")
-table(dichotomize(PredsBRNew))
-getAccuracy(dichotomize(PredsBRNew), dichotomize(catPredsNew))
-Predictions[["LRRedBias"]] = list(PredsBRNew, modelLRB)
+  Predictions = vector("list", 20)
 
 ### Detecting linear dependence relations
-alias(modelLRB)
-badComps = which(PCA1$sdev < tol)
-relations = PCA1$loadings[, badComps, drop=FALSE]
-relations = - round(t(t(relations) / apply(abs(relations), 2, max)), digits = 2)
-badCols = findDependentColumns(rawData[,-numCol])
-allTuples = vector("list", numCol)
-for (ind in 3:(numCol - 3)) {
-  allTuples[[ind]] = combn(numCol - 1 - 2 * (ind >= 9), ind, function(x) {!checkFullRank(rawData[,x])})
-}
-lincomb = t(Null(t(rawData[,-(17:19)])))
-lincombN = lincomb/min(abs(lincomb))
-Predictions[["LinearCombos"]] = list(goodCombos[,1], goodCombos[,2], lincombN)
+# alias(modelLRB)
+# badComps = which(PCA1$sdev < tol)
+# relations = PCA1$loadings[, badComps, drop=FALSE]
+# relations = - round(t(t(relations) / apply(abs(relations), 2, max)), digits = 2)
+# badCols = findDependentColumns(rawData[,-numCol])
+# allTuples = vector("list", numCol)
+# for (ind in 3:(numCol - 3)) {
+#   allTuples[[ind]] = combn(numCol - 1 - 2 * (ind >= 9), ind, function(x) {!checkFullRank(rawData[,x])})
+# }
+# lincomb = t(Null(t(rawData[,-(17:19)])))
+# lincombN = lincomb/min(abs(lincomb))
+# Predictions[["LinearCombos"]] = list(goodCombos[,1], goodCombos[,2], lincombN)
 
 ### Part of the logistic regression postprocessing
-rankMatrix(rawData)                                   ### the model is not full rank; removing some columns!
-PredsLRCat = dichotomize(PredsLR, "Paleolithic", "LBA.Modern")
-with(modelLR, null.deviance - deviance)
-with(modelLR, df.null - df.residual)
-with(modelLR, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))
-vif(modelLR)
+# rankMatrix(rawData)                                   ### the model is not full rank; removing some columns!
+# PredsLRCat = dichotomize(PredsLR, "Paleolithic", "LBA.Modern")
+# with(modelLR, null.deviance - deviance)
+# with(modelLR, df.null - df.residual)
+# with(modelLR, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))
+# vif(modelLR)
 
 ### Part of the lasso/ridge regression postprocesisng
-predStats = prediction(model.pred, trainData[,numCol])
-predAccuracy = (predStats@tp[[1]] + predStats@tn[[1]])/nrow(trainData)
-bestAccuracy = max(predAccuracy)
-plot(predStats@cutoffs[[1]], predAccuracy)
-bestAlpha = predStats@cutoffs[[1]][which.max(predAccuracy)]
-roc.perf = performance(predStats, measure = "tpr", x.measure = "fpr")
-plot(roc.perf)
-curPred = dichotomize(model.pred.new, threshold = bestAlpha)
-table(curPred)
+# predStats = prediction(model.pred, trainData[,numCol])
+# predAccuracy = (predStats@tp[[1]] + predStats@tn[[1]])/nrow(trainData)
+# bestAccuracy = max(predAccuracy)
+# plot(predStats@cutoffs[[1]], predAccuracy)
+# bestAlpha = predStats@cutoffs[[1]][which.max(predAccuracy)]
+# roc.perf = performance(predStats, measure = "tpr", x.measure = "fpr")
+# plot(roc.perf)
+# curPred = dichotomize(model.pred.new, threshold = bestAlpha)
+# table(curPred)
 
 ### Robust LDA
-RLDModel = rrlda(x = as.data.frame(trainData[,-numCol]), grouping = as.factor(trainData[,numCol]))
-RLDtest = predict(RLDModel, x = as.data.frame(trainData[,-numCol]), type = class)
-table(RLDtest$class, trainData[,numCol])
+robustLDA = function(trainData, numCol = ncol(trainData)) {
+  RLDModel = rrlda(x = as.data.frame(trainData[,-numCol]), grouping = as.factor(trainData[,numCol]))
+  RLDtest = predict(RLDModel, x = as.data.frame(trainData[,-numCol]), type = class)
+  Tab = table(RLDtest$class, trainData[,numCol])
+  Tab
+}
 
-QDModel = qda(x = as.data.frame(trainData[,-numCol]), grouping = as.factor(trainData[,numCol]), CV = FALSE)
+### QDA model without LOOCV
+QDA = function(trainData, numCol = ncol(trainData)) {
+  QDModel = qda(x = as.data.frame(trainData[,-numCol]), grouping = as.factor(trainData[,numCol]), CV = FALSE)
+  QDModel
+}
 
 ### LDA with LOOCV
-LDCV = lda(x = as.data.frame(trainData[,1:14]), grouping = as.factor(trainData[,numCol]), CV = TRUE)
-table(LDCV$class, trainData[,numCol])
+LDCV = function(trainData, numCol = ncol(trainData)) {
+  LDCV = lda(x = as.data.frame(trainData[,1:14]), grouping = as.factor(trainData[,numCol]), CV = TRUE)
+  Tab = table(LDCV$class, trainData[,numCol])
+  Tab
+}
 
 ### Decision trees
 DecTree = rpart(status ~ ., method = "class", data = as.data.frame(trainData), control = rpart.control(maxsurrogate = 3))
@@ -240,18 +302,18 @@ RF = randomForest(x = as.data.frame(trainData[,-numCol]), y = as.factor(trainDat
 RF$confusion
 
 ### From ProcessingNew.R: Mahalanobis distance-based probabilities for the Eneolithic samples
-train1Class0 = reduceToFullRank(restrictLabels(dataset1, c("LBA/Modern")) , fromEnd = TRUE, oneMore = TRUE)
-train1Class1 = reduceToFullRank(restrictLabels(dataset1, c("Paleolithic")), fromEnd = TRUE, oneMore = TRUE)
-d00 = mahalanobis(train1Class0$Data, colMeans(train1Class0$Data), cov(train1Class0$Data))
-d11 = mahalanobis(train1Class1$Data, colMeans(train1Class1$Data), cov(train1Class1$Data))
-dists1Class0 = mahalanobis(test1$Data[,1:ncol(train1Class0$Data)], colMeans(train1Class0$Data), cov(train1Class0$Data))
-dists1Class1 = mahalanobis(test1$Data[,1:ncol(train1Class1$Data)], colMeans(train1Class1$Data), cov(train1Class1$Data))
-P1C0 = 1 - pchisq(dists1Class0, df = ncol(train1Class0$Data))
-P1C1 = 1 - pchisq(dists1Class1, df = ncol(train1Class1$Data))
-train2Class0 = reduceToFullRank(restrictLabels(dataset2, c("Iron Age/LBA/Modern")) , fromEnd = TRUE, oneMore = TRUE)
-train2Class1 = reduceToFullRank(restrictLabels(dataset2, c("Paleolithic")), fromEnd = TRUE, oneMore = TRUE)
-dists2Class0 = mahalanobis(test2$Data[,1:ncol(train2Class0$Data)], colMeans(train2Class0$Data), cov(train2Class0$Data))
-dists2Class1 = mahalanobis(test2$Data[,1:ncol(train2Class1$Data)], colMeans(train2Class1$Data), cov(train2Class1$Data))
-P2C0 = 1 - pchisq(dists2Class0, df = ncol(train2Class0$Data))
-P2C1 = 1 - pchisq(dists2Class1, df = ncol(train2Class1$Data))
+# train1Class0 = reduceToFullRank(restrictLabels(dataset1, c("LBA/Modern")) , fromEnd = TRUE, oneMore = TRUE)
+# train1Class1 = reduceToFullRank(restrictLabels(dataset1, c("Paleolithic")), fromEnd = TRUE, oneMore = TRUE)
+# d00 = mahalanobis(train1Class0$Data, colMeans(train1Class0$Data), cov(train1Class0$Data))
+# d11 = mahalanobis(train1Class1$Data, colMeans(train1Class1$Data), cov(train1Class1$Data))
+# dists1Class0 = mahalanobis(test1$Data[,1:ncol(train1Class0$Data)], colMeans(train1Class0$Data), cov(train1Class0$Data))
+# dists1Class1 = mahalanobis(test1$Data[,1:ncol(train1Class1$Data)], colMeans(train1Class1$Data), cov(train1Class1$Data))
+# P1C0 = 1 - pchisq(dists1Class0, df = ncol(train1Class0$Data))
+# P1C1 = 1 - pchisq(dists1Class1, df = ncol(train1Class1$Data))
+# train2Class0 = reduceToFullRank(restrictLabels(dataset2, c("Iron Age/LBA/Modern")) , fromEnd = TRUE, oneMore = TRUE)
+# train2Class1 = reduceToFullRank(restrictLabels(dataset2, c("Paleolithic")), fromEnd = TRUE, oneMore = TRUE)
+# dists2Class0 = mahalanobis(test2$Data[,1:ncol(train2Class0$Data)], colMeans(train2Class0$Data), cov(train2Class0$Data))
+# dists2Class1 = mahalanobis(test2$Data[,1:ncol(train2Class1$Data)], colMeans(train2Class1$Data), cov(train2Class1$Data))
+# P2C0 = 1 - pchisq(dists2Class0, df = ncol(train2Class0$Data))
+# P2C1 = 1 - pchisq(dists2Class1, df = ncol(train2Class1$Data))
 }

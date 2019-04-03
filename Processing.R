@@ -14,11 +14,13 @@ numFolds = 5
 numReps = 5
 numComps = 10
 RANGE = -5:5
-balanced = TRUE ### TRUE if we are forcing the folds to balance (previously set to FALSE)
+balanced = TRUE       ### TRUE if we are forcing the folds to balance (previously set to FALSE)
 SVMVars = 0
 otherVars = 0
-P2 = FALSE ### TRUE if we are analyzing the P2 teeth, FALSE if we are analyzing the M3's
-ways = 3 ### equals 3 if we are doing a 3-way classification (Wild vs Botai vs modern)
+P2 = FALSE            ### TRUE if we are analyzing the P2 teeth, FALSE if we are analyzing the M3's
+ways = 3              ### equals 3 if we are doing a 3-way classification (Wild vs Botai vs modern)
+mySeed = 1492         ### The seed value used for the random number generator
+exploratory = FALSE   ### TRUE if all the exploratory functions should be applied
 
 ### Various auxiliary functions
 dichotomize = function(x, lowValue = 0, highValue = 1, threshold = 0.5) {
@@ -35,38 +37,65 @@ getAccuracy = function(predicted, true) {
   accuracy
 }
 
-### P2-Clean.txt is from: www.dropbox.com/home/GMM%20Horse%20Teeth/Data%20goes%20here!?preview=P2-Clean.txt
-if (P2) {
-  rawData = read.csv("P2-Clean.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
-} else {
-  rawData = read.csv("All M3s.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
-}
-badID = which(duplicated(rawData[,1]))                ### see if any identifiers are duplicated
-if (P2) {
-  dupRows = which(rawData[,1] == rawData[badID,1])      ### see which rows have duplicate identifiers
-  sum(rawData[dupRows[1],-1] - rawData[dupRows[2],-1])  ### check if the two duplicate rows are identical
-} else {
-  for (ind in badID) {
-    numChar = nchar(rawData[ind - 1, 2])
-    stopifnot(substr(rawData[ind, 2], 1, numChar) == rawData[ind - 1, 2])
+### This function computes the area under the receiver operating curve (AUROC) for a binary or real-valued prediction 
+getAUC = function(predicted, true, plot = FALSE, filename = NULL) {
+  AUC = auc(true, predicted)
+  if (plot) {
+    predob = prediction(predicted, true)
+    perf = performance(predob, "tpr", "fpr")
+    pdf(filename)
+    plot(perf)
+    area = format(round(AUC, 4), nsmall = 4)
+    text(x = 0.8, y = 0.1, labels = paste("AUC =", area))
+    # the reference x=y line
+    segments(x0=0, y0=0, x1=1, y1=1, col="gray", lty=2)
+    dev.off()
   }
-  # badID = badID - 1 ### uncomment this if you want to use the rc version instead of original
-}
-rawData = rawData[-badID,]                            ### remove the duplicate row(s)
-rownames(rawData) = rawData[,1]                       ### use the identifiers as row names
-rawData = rawData[,-1]                                ### remove the identifiers from the data
-rawData = as.matrix(rawData)
-
-### Metadata edited.csv is from: www.dropbox.com/home/GMM%20Horse%20Teeth/Data%20goes%20here!?preview=Metadata+edited.xlsx
-### The first sheet only was converted to csv format using Microsoft Excel's "Save As" command
-if (P2) {
-  Labels = read.csv("Metadata edited.csv", header = TRUE, stringsAsFactors = FALSE)
-  Labels = Labels[-nrow(Labels),]                       ### removing the empty line
-} else {
-  Labels =  rawData[,1:3]
-  rawData = matrix(as.numeric(rawData[,-(1:3)]), nrow = nrow(rawData))
+  AUC
 }
 
+### Data preparation - obsolete now
+### P2-Clean.txt is from: www.dropbox.com/home/GMM%20Horse%20Teeth/Data%20goes%20here!?preview=P2-Clean.txt
+prepareData = function() {
+  if (P2) {
+    rawData = read.csv("P2-Clean.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+  } else {
+    rawData = read.csv("All M3s.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+  }
+  badID = which(duplicated(rawData[,1]))                ### see if any identifiers are duplicated
+  if (P2) {
+    dupRows = which(rawData[,1] == rawData[badID,1])      ### see which rows have duplicate identifiers
+    sum(rawData[dupRows[1],-1] - rawData[dupRows[2],-1])  ### check if the two duplicate rows are identical
+  } else {
+    for (ind in badID) {
+      numChar = nchar(rawData[ind - 1, 2])
+      stopifnot(substr(rawData[ind, 2], 1, numChar) == rawData[ind - 1, 2])
+    }
+    # badID = badID - 1 ### uncomment this if you want to use the rc version instead of original
+  }
+  rawData = rawData[-badID,]                            ### remove the duplicate row(s)
+  rownames(rawData) = rawData[,1]                       ### use the identifiers as row names
+  rawData = rawData[,-1]                                ### remove the identifiers from the data
+  rawData = as.matrix(rawData)
+  rawData
+}
+
+### Function for adding metadata, now obsolete
+addMetadata = function(rawData) {
+  ### Metadata edited.csv is from: www.dropbox.com/home/GMM%20Horse%20Teeth/Data%20goes%20here!?preview=Metadata+edited.xlsx
+  ### The first sheet only was converted to csv format using Microsoft Excel's "Save As" command
+  if (P2) {
+    Labels = read.csv("Metadata edited.csv", header = TRUE, stringsAsFactors = FALSE)
+    Labels = Labels[-nrow(Labels),]                       ### removing the empty line
+  } else {
+    Labels =  rawData[,1:3]
+    rawData = matrix(as.numeric(rawData[,-(1:3)]), nrow = nrow(rawData))
+  }
+  output = list(rawData, Labels)
+  output
+}
+
+if (exploratory) {
 ### Data preparation
 if (!P2) {
   TimeMap = c("Eneolithic","LBA","LBA","Paleolithic","Paleolithic","Iron Age","Modern","Eneolithic")
@@ -77,6 +106,7 @@ Labels5 = Labels[,"Time.Period"]
 Labels5[Labels[,"Site"] == "Botai"] = "Botai"
 Labels5[Labels5 == "Eneolithic"] = "Eneolithic excluding Botai"
 Labels5[Labels5 %in% c("LBA", "Modern")] = "LBA/Modern"
+
 if (ways == 3) {
   trainRows = which(Labels5 %in% c("Paleolithic", "Botai", "LBA/Modern"))
   testRows  = which(Labels5 == "Eneolithic excluding Botai")
@@ -99,7 +129,8 @@ if (balanced) {
     names(curFold) = 1:numRow
     fullFolds[[r]] = curFold
   }
-  Segments = unlist(lapply(fullFolds, function(x) {lapply(split(x, x), function(y) {as.integer(names(y))})}), recursive = FALSE)
+  Segments = unlist(lapply(fullFolds, function(x) {lapply(split(x, x), function(y) {
+    as.integer(names(y))})}), recursive = FALSE)
   Folds = lapply(Segments, function(x) {setdiff(1:numRow, x)})
 } else {
   Folds = createMultiFolds(trainData[,"status"], k = numFolds, times = numReps)
@@ -258,6 +289,7 @@ print(table(bestPredictions))
 filename = paste0("All", rep("M3", !P2), "Preds", numFolds, "Folds", numReps, "Reps", 
                   ways, "Way", rep("Balanced", balanced), format(Sys.Date()), ".RData")
 save(Predictions, file = filename)
+}
 
 ### Optional part: hierarchical clustering, to see where the Botai samples fit
 # allData = rbind(trainData[,-numCol], testData)
