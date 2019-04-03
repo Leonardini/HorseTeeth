@@ -1,0 +1,34 @@
+> performKMeans(P2s)
+[[1]]
+   
+    Eneolithic LBA/Modern Paleolithic PRZ
+  1         19          6          11   1
+  2          3          2           1   1
+  3         30          7           3   2
+  4         13          4           6   5
+
+[[2]]
+[1] 0.04597241
+
+> performKMeans(M3s)
+[[1]]
+   
+    Eneolithic Iron Age/LBA/Modern Paleolithic PRZ
+  1         20                  13          10   4
+  2          1                   2           0   0
+  3         16                   5           1   0
+  4         11                  14           5   5
+
+[[2]]
+[1] 0.004297696
+
+The high-confusion contingency tables and the very low adjusted Rand Index scores suggest that K-means is useless in terms of classifying the data.
+
+> performHClust(P2s, filename = "P2HierarchicalClustering.pdf")
+RStudioGD 
+        2 
+> performHClust(M3s, filename = "M3HierarchicalClustering.pdf")
+RStudioGD 
+        2 
+
+The plots show that each cluster typically contains representatives of multiple classes.
