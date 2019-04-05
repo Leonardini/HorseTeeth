@@ -37,3 +37,7 @@ RVFor[M3/P2]Merged.pdf - RV coefficients (generalization of Pearson correlation 
 # Text files
 
 UnsupervisedMethods.txt - description of methods and results for the unsupervised analysis of the data
+
+SupervisedMachineLearningMethods.txt - description of methods and results for the machine learning-based analysis of the data
+
+SupervisedStatisticalMethods.txt - description of methods and results for the statistical method-based analysis of the data
