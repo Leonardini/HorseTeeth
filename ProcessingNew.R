@@ -8,8 +8,12 @@ source("AlternativeDataPrep.R")
 ### Useful packages
 listOfPackages = c("pls", "c060", "pamr", "dplyr", "kernlab", "ROCR", "pROC", "car", "MASS", "e1071", "klaR", "useful")
 listOfPackages = c(listOfPackages, c("glmnet", "plsgenomics", "FactoMineR", "Morpho", "fossil", "geomorph", "caret"))
-listOfPackages = c(listOfPackages, "dendextend")
+listOfPackages = c(listOfPackages, "dendextend", "party", "rpart")
 requirePackages(listOfPackages)
+
+### Useful constants
+numReps = 5
+numFolds = 5
 
 ### Prepares raw data based on a directory
 readFilesInDir = function(directory = "Raw data/P2s/", save = FALSE) {
@@ -164,11 +168,96 @@ updatedProcess = function() {
   ### optional step: produce a hierarchical clustering for both
   performHClust(P2s, filename = "P2HierarchicalClustering.pdf")
   performHClust(M3s, filename = "M3HierarchicalClustering.pdf")
-  ### supervised methods: classification with statistical methods
-  
-  ### supervised methods: classification with machine learning methods
-
+  ### creating folds and segments to be used in cross-validation
+  trainLabelsP2s = c("LBA/Modern", "Paleolithic", "PRZ")
+  trainP2s = restrictLabels(P2s, trainLabelsP2s)
+  testP2s = restrictLabels(P2s, c("Eneolithic"))
+  foldsAndSegsP2 = createFoldsSpecial(trainP2s, numFolds = numFolds, numReps = numReps)
+  foldsP2 = foldsAndSegsP2$fullFolds
+  miniFoldsP2 = foldsAndSegsP2$miniFolds
+  segsP2  = foldsAndSegsP2$Segments
+  trainLabelsM3s = c("Iron Age/LBA/Modern", "Paleolithic", "PRZ")
+  trainM3s = restrictLabels(M3s, trainLabelsM3s)
+  testM3s = restrictLabels(M3s, c("Eneolithic"))
+  foldsAndSegsM3 = createFoldsSpecial(trainM3s, numFolds = numFolds, numReps = numReps)
+  foldsM3 = foldsAndSegsM3$fullFolds
+  miniFoldsM3 = foldsAndSegsM3$miniFolds
+  segsM3  = foldsAndSegsM3$Segments
+  ### also creating data frames to be used with statistical formulas
+  DFP2 = transformDatasetToDataFrame(P2s)
+  DFM3 = transformDatasetToDataFrame(M3s)
+  trainDFP2 = transformDatasetToDataFrame(trainP2s)
+  trainDFM3 = transformDatasetToDataFrame(trainM3s)
+  testDFP2  = transformDatasetToDataFrame(testP2s)
+  testDFM3  = transformDatasetToDataFrame(testM3s)
+  ### supervised methods: classification with statistical methods; starting with model selection by cross-validation
+  ### failed attempts at penalized logistic regression
+  statPredictions = list()
+  fullList = 1:3
+  for (index in 1:numReps) {
+    curFoldM3 = foldsM3[[index]]
+    for (ind in 1:numFolds) {
+      curTestFold = which(curFoldM3 == ind)
+      curTrainFold = which(curFoldM3 != ind)
+      curTrainM3s = restrictDataset(trainM3s, curTrainFold)
+      curTestM3s  = restrictDataset(trainM3s, curTestFold)
+      for (i in 1:3) {
+        print(paste(index, ind, i))
+        redList = setdiff(fullList, i)
+        redTrainM3s = dichotomizeLabels(restrictLabels(curTrainM3s, trainLabelsM3s[redList]), redList[1])
+        redTestM3s  = dichotomizeLabels(restrictLabels(curTestM3s,  trainLabelsM3s[redList]), redList[1])
+        redTrainDFM3 = transformDatasetToDataFrame(redTrainM3s, number = FALSE)
+        redTestDFM3 = transformDatasetToDataFrame(redTestM3s, number = FALSE)
+        # statPredictions = penalizedLRAlt(redTrainDFM3, redTestDFM3, statPredictions, dichotomize = TRUE, extras = paste("M3", index, ind, i))
+      }
+    }
   }
+  ### LDA
+  P2LDA = LDCV(trainDFP2)
+  accLDA1 = computeAccuracy(P2LDA)
+  print(paste("The cross-validation accuracy of LDA on P2 is", accLDA1))
+  M3LDA = LDCV(trainDFM3)
+  accLDA2 = computeAccuracy(M3LDA)
+  print(paste("The cross-validation accuracy of LDA on M3 is", accLDA2))
+  ### Robust LDA
+  P2RLDA = robustLDA(trainDFP2)
+  accRLDA1 = computeAccuracy(P2RLDA)
+  print(paste("The cross-validation accuracy of robust LDA on P2 is", accRLDA1))
+  M3RLDA = robustLDA(trainDFM3)
+  accRLDA2 = computeAccuracy(M3RLDA)
+  print(paste("The cross-validation accuracy of robust LDA on M3 is", accRLDA2))
+  ### QDA
+  redDFP2 = trainDFP2[trainDFP2[,'status'] != 3,] ### excludes PRZ - this still fails!
+  P2QDA = QDCV(redDFP2)
+  accQDA1 = computeAccuracy(P2QDA)
+  print(paste("The cross-validation accuracy of QDA on P2 is", accQDA1))
+  redDFM3 = trainDFM3[trainDFM3[,'status'] != 3,] ### excludes PRZ - this still fails!
+  M3QDA = QDCV(redDFM3)
+  accQDA2 = computeAccuracy(M3QDA)
+  print(paste("The cross-validation accuracy of QDA on M3 is", accQDA2))
+  ### supervised methods: classification with machine learning methods
+  ### decision trees
+  DT1 = decisionTree(trainDFP2, title = "Classification Tree for Horse Second Premolar Teeth")
+  printcp(DT1)
+  DT2 = decisionTree(trainDFM3, title = "Classification Tree for Horse Third Molar Teeth")
+  printcp(DT2)
+  ### random forests
+  RF1 = rForest(trainDFP2)
+  accRF1 = computeAccuracy(RF1[,-ncol(RF1)])
+  print(paste("The accuracy of random forests on P2 is", accRF1))
+  RF2 = rForest(trainDFM3)
+  accRF2 = computeAccuracy(RF2[,-ncol(RF2)])
+  print(paste("The accuracy of random forests on M3 is", accRF2))
+  ### Support vector machines (SVMs)
+  U1 = trainSVMs(trainData = trainDFP2, testData = testDFP2, Folds = miniFoldsP2)
+  U2 = trainSVMs(trainData = trainDFM3, testData = testDFM3, Folds = miniFoldsM3)
+}
+
+computeAccuracy = function(Table) {
+  stopifnot(all(rownames(Table) == colnames(Table)))
+  accuracy = sum(diag(Table))/sum(Table)
+  accuracy
+}
 
 make3DPCA = function(Dataset, labelName = "time period", tooth = "P2s") {
   Labels = Dataset$Labels

@@ -1,0 +1,228 @@
+Decision trees:
+
+> DT1 = decisionTree(trainDFP2, title = "Classification Tree for Horse Second Premolar Teeth")
+
+>   printcp(DT1)
+
+Classification tree:
+rpart(formula = status ~ ., data = as.data.frame(trainData), 
+    method = "class", control = rpart.control(maxsurrogate = 3))
+
+Variables actually used in tree construction:
+[1] 11 13
+
+Root node error: 28/49 = 0.57143
+
+n= 49 
+
+        CP nsplit rel error  xerror    xstd
+1 0.321429      0   1.00000 1.25000 0.11294
+2 0.071429      1   0.67857 0.92857 0.12477
+3 0.010000      2   0.60714 1.10714 0.12052
+
+>   DT2 = decisionTree(trainDFM3, title = "Classification Tree for Horse Third Molar Teeth")
+
+>   printcp(DT2)
+
+Classification tree:
+rpart(formula = status ~ ., data = as.data.frame(trainData), 
+    method = "class", control = rpart.control(maxsurrogate = 3))
+
+Variables actually used in tree construction:
+[1] 11 13 14
+
+Root node error: 25/59 = 0.42373
+
+n= 59 
+
+       CP nsplit rel error xerror    xstd
+1 0.13333      0       1.0   1.00 0.15183
+2 0.01000      3       0.6   1.32 0.15254
+
+Conclusion: decision trees appear to be only marginally different from random.
+
+Random forests:
+
+> RF1 = rForest(trainDFP2)
+>   accRF1 = computeAccuracy(RF1[,-ncol(RF1)])
+>   print(paste("The accuracy of random forests on P2 is", accRF1))
+[1] "The accuracy of random forests on P2 is 0.448979591836735"
+
+>   RF2 = rForest(trainDFM3)
+>   accRF2 = computeAccuracy(RF2[,-ncol(RF2)])
+>   print(paste("The accuracy of random forests on M3 is", accRF2))
+[1] "The accuracy of random forests on M3 is 0.576271186440678"
+
+Conclusion: picking the better of the two techniques gives a performance of 0.57, which is not bad.
+
+Support vector machines:
+
+> U1=trainSVMs(trainData = trainDFP2, testData = testDFP2, Folds = miniFoldsP2)
+[1] "SVM"
+[1] "Radial"
+[1] "Linear"
+[1] "Poly"
+Warning messages:
+1: In method$predict(modelFit = modelFit, newdata = newdata, submodels = param) :
+  kernlab class prediction calculations failed; returning NAs
+2: In method$predict(modelFit = modelFit, newdata = newdata, submodels = param) :
+  kernlab class prediction calculations failed; returning NAs
+3: In method$predict(modelFit = modelFit, newdata = newdata, submodels = param) :
+  kernlab class prediction calculations failed; returning NAs
+> U1
+
+$SVMRadial
+$SVMRadial[[1]]
+ [1] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[24] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[47] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+Levels: X1 X2 X3
+
+$SVMRadial[[2]]
+Support Vector Machines with Radial Basis Function Kernel 
+
+49 samples
+18 predictors
+ 3 classes: 'X1', 'X2', 'X3' 
+
+$SVMRadial[[3]]
+[1] 0.4781414
+
+$SVMRadial[[4]]
+[1] 1
+
+
+$SVMLinear
+$SVMLinear[[1]]
+ [1] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[24] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[47] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+Levels: X1 X2 X3
+
+$SVMLinear[[2]]
+Support Vector Machines with Linear Kernel 
+
+49 samples
+18 predictors
+ 3 classes: 'X1', 'X2', 'X3' 
+
+Accuracy was used to select the optimal model using the largest value.
+The final value used for the model was C = 8.
+
+$SVMLinear[[3]]
+[1] 0.5721313
+
+$SVMLinear[[4]]
+[1] 0.9591837
+
+
+$SVMPoly
+$SVMPoly[[1]]
+ [1] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[24] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[47] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+Levels: X1 X2 X3
+
+$SVMPoly[[2]]
+Support Vector Machines with Polynomial Kernel 
+
+49 samples
+18 predictors
+ 3 classes: 'X1', 'X2', 'X3' 
+
+Tuning parameter 'scale' was held constant at a value of 1
+Accuracy was used to select the optimal model using the largest value.
+The final values used for the model were degree = 1, scale = 1 and C = 8.
+
+$SVMPoly[[3]]
+[1] 0.5721313
+
+$SVMPoly[[4]]
+[1] 0.9591837
+
+> U2=trainSVMs(trainData = trainDFM3, testData = testDFM3, Folds = miniFoldsM3)
+[1] "SVM"
+[1] "Radial"
+[1] "Linear"
+[1] "Poly"
+Warning messages:
+1: In method$predict(modelFit = modelFit, newdata = newdata, submodels = param) :
+  kernlab class prediction calculations failed; returning NAs
+2: In method$predict(modelFit = modelFit, newdata = newdata, submodels = param) :
+  kernlab class prediction calculations failed; returning NAs
+3: In method$predict(modelFit = modelFit, newdata = newdata, submodels = param) :
+  kernlab class prediction calculations failed; returning NAs
+
+> U2
+
+$SVMRadial
+$SVMRadial[[1]]
+ [1] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[24] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[47] <NA> <NA>
+Levels: X1 X2 X3
+
+$SVMRadial[[2]]
+Support Vector Machines with Radial Basis Function Kernel 
+
+59 samples
+16 predictors
+ 3 classes: 'X1', 'X2', 'X3'
+
+$SVMRadial[[3]]
+[1] 0.6923077
+
+$SVMRadial[[4]]
+[1] 0.9152542
+
+
+$SVMLinear
+$SVMLinear[[1]]
+ [1] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[24] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[47] <NA> <NA>
+Levels: X1 X2 X3
+
+$SVMLinear[[2]]
+Support Vector Machines with Linear Kernel 
+
+59 samples
+16 predictors
+ 3 classes: 'X1', 'X2', 'X3' 
+
+Accuracy was used to select the optimal model using the largest value.
+The final value used for the model was C = 0.03125.
+
+$SVMLinear[[3]]
+[1] 0.5594406
+
+$SVMLinear[[4]]
+[1] 0.5762712
+
+
+$SVMPoly
+$SVMPoly[[1]]
+ [1] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[24] <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA> <NA>
+[47] <NA> <NA>
+Levels: X1 X2 X3
+
+$SVMPoly[[2]]
+Support Vector Machines with Polynomial Kernel 
+
+59 samples
+16 predictors
+ 3 classes: 'X1', 'X2', 'X3' 
+
+Tuning parameter 'scale' was held constant at a value of 1
+Accuracy was used to select the optimal model using the largest value.
+The final values used for the model were degree = 2, scale = 1 and C = 0.03125.
+
+$SVMPoly[[3]]
+[1] 0.595641
+
+$SVMPoly[[4]]
+[1] 0.9661017
+
+
+Conclusion: picking the best kernel gives a performance of 0.57 on P2 and 0.69 on M3 teeth, which is better than random forests. Note that this is a 3-class comparison, meaning that it is actually more challenging than a usual binary one.

@@ -68,7 +68,7 @@ mergeLabels = function(Dataset, labelList, sep = "/") {
   Dataset
 }
 
-dichtomizeLabels = function(Dataset, lowLabel, highLabel = NULL) {
+dichotomizeLabels = function(Dataset, lowLabel, highLabel = NULL) {
   if (is.null(highLabel)) {
     highLabel = paste0("non-", lowLabel)
     otherLabels = setdiff(unique(Dataset$Labels), lowLabel)

@@ -190,14 +190,18 @@ computeCoordinateCorrelations = function(Dataset, oneVsAll = FALSE) {
   output
 }
 
-transformDatasetToDataFrame = function(Dataset, labelName = "status") {
+transformDatasetToDataFrame = function(Dataset, labelName = "status", number = TRUE) {
+  if (number) {
+    Dataset$Labels = as.numeric(as.factor(Dataset$Labels))
+  }
   DF = cbind(Dataset$Data, Dataset$Labels)
+  colnames(DF) = 1:ncol(DF)
   colnames(DF)[ncol(DF)] = labelName
   DF
 }
 
 ### Penalized logistic regression
-penalizedLR = function(trainData, testData, Predictions = list(), dichotomize = FALSE) {
+penalizedLR = function(trainData, testData, Predictions = list(), dichotomize = FALSE, extras = "") {
   modelLRF = logistf(status ~., data = as.data.frame(trainData))
   catPreds = modelLRF$predict
   if (dichotomize) {
@@ -205,7 +209,7 @@ penalizedLR = function(trainData, testData, Predictions = list(), dichotomize = 
     trainAcc = getAccuracy(catPreds, trainData[,"status"])
   }
   else {
-    trainAcc = getAUC(catPreds, trainData[,"status"], TRUE, filename = "TrainAUCLRFirth.pdf")
+    trainAcc = getAUC2(trainData[,"status"], catPreds)
   }
   betas = coef(modelLRF)
   catPredsNew = 1 / (1 + exp(-cbind(1, testData) %*% betas))
@@ -214,27 +218,41 @@ penalizedLR = function(trainData, testData, Predictions = list(), dichotomize = 
     testAcc = getAccuracy(catPredsNewBin, testData[,"status"])
   }
   else {
-    testAcc = getAUC(catPredsNewBin, testData[,"status"], TRUE, filename = "TestAUCLRFirth.pdf")
+    testAcc = getAUC2(testData[,"status"], catPredsNewBin)
   }
-  Predictions[["LRFirth"]] = list(predictions = catPredsNew, model = modelLRF, trainAcc = trainAcc, testAcc = testAcc)
-  Predictions
-}
- 
-### Alternative with the brglm package (bias reduction)
-penalizedLRAlternative = function(trainData, Predictions = list()) {
-  modelLRB = brglm(status ~., family = binomial(link = 'logit'), data = as.data.frame(trainData))
-  PredsBR = predict(modelLRB, newdata = as.data.frame(trainData), type = "response")
-  getAccuracy(dichotomize(PredsBR), trainData[,"status"])
-  PredsBRNew = predict(modelLRB, newdata = as.data.frame(testData), type = "response")
-  table(dichotomize(PredsBRNew))
-  getAccuracy(dichotomize(PredsBRNew), dichotomize(catPredsNew))
-  Predictions[["LRRedBias"]] = list(PredsBRNew, modelLRB)
+  listLabel = paste0("LRFirth", extras)
+  Predictions[[listLabel]] = list(predictions = catPredsNew, model = modelLRF, trainAcc = trainAcc, testAcc = testAcc)
   Predictions
 }
 
-### From here on, only those functions that are exploratory are listed. TODO: these need to be refactored eventually.
-if (exploratory) {
-  Predictions = vector("list", 20)
+getAUC2 = function(trueClasses, predClasses) {
+  DF = data.frame(true = trueClasses, pred = predClasses)
+  DF = DF[order(DF[,"true"]), ]
+  ROCobject = roc(DF$true, DF$pred)
+  AUC = auc(ROCobject)
+  AUC
+}
+ 
+### Alternative with the brglm package (bias reduction)
+penalizedLRAlt = function(trainData, testData, Predictions = list(), dichotomize = FALSE, extras = "") {
+  modelLRB = brglm(status ~., family = binomial(link = 'logit'), data = as.data.frame(trainData))
+  PredsBR = predict(modelLRB, newdata = as.data.frame(trainData), type = "response")
+  if (dichotomize) {
+    trainAcc = getAccuracy(dichotomize(PredsBR), trainData[,"status"])
+  }
+  else {
+    trainAcc = getAUC2(testData[,"status"], PredsBR)
+  }
+  PredsBRNew = predict(modelLRB, newdata = as.data.frame(testData), type = "response")
+  if (dichotomize) {
+    testAcc = getAccuracy(dichotomize(PredsBRNew), dichotomize(catPredsNew))
+  }
+  else {
+    testAcc = getAUC2(testData[,"status"], catPredsNew)
+  }
+  Predictions[[paste("LRRedBias", extras)]] = list(PredsBRNew, modelLRB)
+  Predictions
+}
 
 ### Detecting linear dependence relations
 # alias(modelLRB)
@@ -277,10 +295,11 @@ robustLDA = function(trainData, numCol = ncol(trainData)) {
   Tab
 }
 
-### QDA model without LOOCV
-QDA = function(trainData, numCol = ncol(trainData)) {
-  QDModel = qda(x = as.data.frame(trainData[,-numCol]), grouping = as.factor(trainData[,numCol]), CV = FALSE)
-  QDModel
+### QDA model with LOOCV
+QDCV = function(trainData, numCol = ncol(trainData)) {
+  QDModel = qda(x = as.data.frame(trainData[,-numCol]), grouping = as.factor(trainData[,numCol]), CV = TRUE)
+  Tab = table(LDCV$class, trainData[,numCol])
+  Tab
 }
 
 ### LDA with LOOCV
@@ -291,15 +310,21 @@ LDCV = function(trainData, numCol = ncol(trainData)) {
 }
 
 ### Decision trees
-DecTree = rpart(status ~ ., method = "class", data = as.data.frame(trainData), control = rpart.control(maxsurrogate = 3))
-printcp(DecTree)
-plotcp(DecTree)
-summary(DecTree)
-plot(DecTree, uniform = TRUE, main="Classification Tree for Horse Teeth")
+decisionTree = function(trainData, title = "Classification Tree for Horse Teeth") {
+  DecTree = rpart(status ~ ., method = "class", data = as.data.frame(trainData), control = rpart.control(maxsurrogate = 3))
+  # printcp(DecTree)
+  # plotcp(DecTree)
+  output = summary(DecTree)
+  plot(DecTree, uniform = TRUE, main = title)
+  output
+}
 
 ### Random forests
-RF = randomForest(x = as.data.frame(trainData[,-numCol]), y = as.factor(trainData[,numCol]))
-RF$confusion
+rForest = function(trainData, numCol = ncol(trainData)) {
+  RF = randomForest(x = as.data.frame(trainData[,-numCol]), y = as.factor(trainData[,numCol]))
+  confMat = RF$confusion
+  confMat
+}
 
 ### From ProcessingNew.R: Mahalanobis distance-based probabilities for the Eneolithic samples
 # train1Class0 = reduceToFullRank(restrictLabels(dataset1, c("LBA/Modern")) , fromEnd = TRUE, oneMore = TRUE)
@@ -316,4 +341,3 @@ RF$confusion
 # dists2Class1 = mahalanobis(test2$Data[,1:ncol(train2Class1$Data)], colMeans(train2Class1$Data), cov(train2Class1$Data))
 # P2C0 = 1 - pchisq(dists2Class0, df = ncol(train2Class0$Data))
 # P2C1 = 1 - pchisq(dists2Class1, df = ncol(train2Class1$Data))
-}

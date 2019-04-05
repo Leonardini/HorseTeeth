@@ -10,11 +10,7 @@ listOfPackages1 = c(listOfPackages1, c("car", "MASS", "klaR", "glmnet", "e1071",
 requirePackages(listOfPackages1)
 
 ### Useful constants
-numFolds = 5
-numReps = 5
-numComps = 10
 RANGE = -5:5
-balanced = TRUE       ### TRUE if we are forcing the folds to balance (previously set to FALSE)
 SVMVars = 0
 otherVars = 0
 P2 = FALSE            ### TRUE if we are analyzing the P2 teeth, FALSE if we are analyzing the M3's
@@ -119,45 +115,60 @@ testData  = rawData[testRows ,]
 Predictions = vector("list", 30)
 numRow = nrow(trainData)
 numCol = ncol(trainData)
+}
 
-### Creating folds and transformed versions
-set.seed(1492)
-fullFolds = vector("list", numReps)
-if (balanced) {
-  for (r in 1:numReps) {
-    curFold = balancedFolds(trainData[,"status"], numFolds)
-    names(curFold) = 1:numRow
-    fullFolds[[r]] = curFold
+### Function for creating folds and their transformed versions
+### balanced = TRUE if we are forcing the folds to balance (previously set to FALSE)
+createFoldsSpecial = function(trainData = NULL, numFolds = 5, numReps = 5, balanced = TRUE, mySeed = 1492) {
+  set.seed(mySeed)
+  numRow = nrow(trainData$Data)
+  fullFolds = vector("list", numReps)
+  if (balanced) {
+    for (r in 1:numReps) {
+      curFold = balancedFolds(trainData$Labels, numFolds)
+      names(curFold) = 1:numRow
+      fullFolds[[r]] = curFold
+    }
+    Segments = unlist(lapply(fullFolds, function(x) {lapply(split(x, x), function(y) {
+      as.integer(names(y))})}), recursive = FALSE)
+    Folds = lapply(Segments, function(x) {setdiff(1:numRow, x)})
+  } else {
+    Folds = createMultiFolds(trainData$Labels, k = numFolds, times = numReps)
+    Segments = lapply(Folds, function(x) {setdiff(1:numRow, x)})
+    for (r in 1:numReps) {
+      curFold = rep(NA, numRow)
+      for (k in 1:numFolds) {
+        curFold[Segments[[(r - 1) * numReps + k]]] = k
+      }
+      fullFolds[[r]] = curFold
+    }
   }
-  Segments = unlist(lapply(fullFolds, function(x) {lapply(split(x, x), function(y) {
-    as.integer(names(y))})}), recursive = FALSE)
-  Folds = lapply(Segments, function(x) {setdiff(1:numRow, x)})
-} else {
-  Folds = createMultiFolds(trainData[,"status"], k = numFolds, times = numReps)
-  Segments = lapply(Folds, function(x) {setdiff(1:numRow, x)})
-  for (r in 1:numReps) {
-    curFold = rep(NA, numRow); for (k in 1:numFolds) {curFold[Segments[[(r - 1) * numReps + k]]] = k}
-    fullFolds[[r]] = curFold
-  }
+  output = list(fullFolds = fullFolds, miniFolds = Folds, Segments = Segments)
+  output
 }
 
 ### Support vector machine
-print("SVM")
-ctrl = trainControl(method = "repeatedcv", repeats = numReps, index = Folds)
-radGrid   = expand.grid(sigma = 2^RANGE, C = 2^RANGE)
-linGrid  = expand.grid(C = 2^RANGE)
-polyGrid = expand.grid(degree = 1:5, scale = 1, C = 2^RANGE)
-Grids = list("Radial" = radGrid, "Linear" = linGrid, "Poly" = polyGrid)
-for (method in names(Grids)) {
-  print(method)
-  SVMVars = SVMVars + 1 # removed preProc = c("center","scale") from the following line!
-  svm.tune = train(x = trainData[,-numCol], y = factor(make.names(Labels5[trainRows])),
-          method = paste0("svm",method), tuneGrid = Grids[[method]], trControl = ctrl)
-  svmAccuracy = svm.tune$results[as.numeric(rownames(svm.tune$bestTune)), svm.tune$metric]
-  PredsSVM = predict(svm.tune, newdata = as.data.frame(testData))
-  Predictions[[paste0("SVM", method)]] = list(PredsSVM, svm.tune, svmAccuracy, 1 - error(svm.tune$finalModel))
+trainSVMs = function(trainData, numCol = ncol(trainData), testData = NULL, Folds = NULL) {
+  print("SVM")
+  Predictions = vector("list", 3)
+  ctrl = trainControl(method = "repeatedcv", repeats = numReps, index = Folds)
+  radGrid   = expand.grid(sigma = 2^RANGE, C = 2^RANGE)
+  linGrid  = expand.grid(C = 2^RANGE)
+  polyGrid = expand.grid(degree = 1:5, scale = 1, C = 2^RANGE)
+  Grids = list("Radial" = radGrid, "Linear" = linGrid, "Poly" = polyGrid)
+  for (method in names(Grids)) {
+    print(method)
+    SVMVars = SVMVars + 1 # removed preProc = c("center","scale") from the following line!
+    svm.tune = train(x = trainData[,-numCol], y = factor(make.names(trainData[,numCol])),
+                     method = paste0("svm",method), tuneGrid = Grids[[method]], trControl = ctrl)
+    svmAccuracy = svm.tune$results[as.numeric(rownames(svm.tune$bestTune)), svm.tune$metric]
+    PredsSVM = predict(svm.tune, newdata = as.data.frame(testData))
+    Predictions[[paste0("SVM", method)]] = list(PredsSVM, svm.tune, svmAccuracy, 1 - error(svm.tune$finalModel))
+  }
+  Predictions
 }
 
+if (exploratory) {
 ### Partial least-squares analysis
 print("PLS")
 otherVars = otherVars + 1
@@ -167,7 +178,9 @@ for (r in 1:numReps) {
   PLSPreds = round(predict(PLSModel, ncomp = numComps, newdata = as.data.frame(testData), type = "scores"))
   Predictions[[paste0("PLS", r)]] = list(PLSPreds, PLSModel, 1 - min(RMSEP(PLSModel)$val[1,1,]))
 }
+}
 
+if (exploratory) {
 ### Logistic regression
 if (ways == 2) {
   print("Logistic Regression")

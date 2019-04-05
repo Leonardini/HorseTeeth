@@ -1,0 +1,32 @@
+> P2LDA = LDCV(trainDFP2)
+Warning message:
+In lda.default(x, grouping, ...) : variables are collinear
+>   accLDA1 = computeAccuracy(P2LDA)
+>   print(paste("The cross-validation accuracy of LDA on P2 is", accLDA1))
+[1] "The cross-validation accuracy of LDA on P2 is 0.530612244897959"
+>   M3LDA = LDCV(trainDFM3)
+Warning message:
+In lda.default(x, grouping, ...) : variables are collinear
+>   accLDA2 = computeAccuracy(M3LDA)
+>   print(paste("The cross-validation accuracy of LDA on M3 is", accLDA2))
+[1] "The cross-validation accuracy of LDA on M3 is 0.457627118644068"
+
+Conclusion: LDA is not very good on this data.
+
+> ### Robust LDA
+> P2RLDA = robustLDA(trainDFP2)
+> accRLDA1 = computeAccuracy(P2RLDA)
+> print(paste("The cross-validation accuracy of robust LDA on P2 is", accRLDA1))
+[1] "The cross-validation accuracy of robust LDA on P2 is 0.591836734693878"
+> M3RLDA = robustLDA(trainDFM3)
+> accRLDA2 = computeAccuracy(M3RLDA)
+> print(paste("The cross-validation accuracy of robust LDA on M3 is", accRLDA2))
+[1] "The cross-validation accuracy of robust LDA on M3 is 0.627118644067797"
+
+Conclusion: robust LDA is marginally better, but still nowhere near the level we need.
+
+Note: QDA (quadratic discriminant analysis) fails completely as there are too few samples.
+
+Note: linear regression (both regularized and ordinary) also fail due to rank deficiency.
+
+ 
